@@ -7,9 +7,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
 
 // Add your OpenAI API key (use environment variable in production)
-const OPENAI_API_KEY =
-  process.env.OPENAI_API_KEY ||
-  "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";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 app.get("/", (req, res) => {
   res.send("Hello");
