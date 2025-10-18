@@ -2,9 +2,19 @@ const express = require("express");
 const multer = require("multer");
 const axios = require("axios");
 const { PDFParse } = require("pdf-parse");
+const cors = require("cors");
+require("dotenv").config();
 
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
+
+// Allow CORS from the local frontend dev origin
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    methods: ["GET", "POST", "OPTIONS"],
+  })
+);
 
 // Add your OpenAI API key (use environment variable in production)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
