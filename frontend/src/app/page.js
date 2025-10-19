@@ -638,9 +638,14 @@ export default function AggiePredictor() {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                 <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 text-black max-h-[80vh] overflow-hidden">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-lg font-semibold">Recent Professors</h4>
+                    <h4 className="text-lg font-semibold">
+                      Recent Professors — {profModalData?.title}
+                    </h4>
                     <button
-                      onClick={() => setProfModalOpen(false)}
+                      onClick={() => {
+                        setProfModalOpen(false);
+                        setProfModalData(null);
+                      }}
                       className="text-gray-600 hover:text-gray-800"
                     >
                       Close
@@ -648,7 +653,9 @@ export default function AggiePredictor() {
                   </div>
                   <div className="mt-4 text-black">
                     {(() => {
-                      const stats = computeRecentProfessorStats(classesData);
+                      const stats = computeRecentProfessorStats(
+                        profModalData?.classes ?? []
+                      );
                       if (!stats || stats.length === 0)
                         return <div>No recent professor data available.</div>;
 

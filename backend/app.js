@@ -77,7 +77,7 @@ Based on the student's academic history and performance in related courses shown
 3. Any gaps that may make it harder
 4. Their chances of earning an (A, B, C, D, and F) AS A PERCENTAGE
 
-Keep your response concise (100-200 words). Keep each reply CONCISE AND BRIEF. Don't use pronouns like "you" and don't say "the student" or anything, just make the statement. 
+Keep your response concise (100-200 words). Keep each reply BRIEF (but feel free to add some details if you feel necessary). Don't use pronouns like "you" and don't say "the student" or anything, just make the statement. Assume that the in progress courses or courses that don't have grades yet, the student has knowledge from that course. 
 
 Ouput your reply like this (ADHERE TO THIS FORMAT STRICTLY DONT ADD ANYTHING EXTRA AT THE END MAKE SURE ITS ALL UNIFORM FOR EVERYSINGLE COURSE):
 **Likely Difficulty**: <difficulty here>
