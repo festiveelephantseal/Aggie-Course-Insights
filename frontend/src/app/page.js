@@ -281,9 +281,29 @@ export default function AggiePredictor() {
       id: Date.now() + Math.random(),
       name,
       courses: courses.map((c) => ({ dept: c.dept, number: c.number })),
+      results:
+        results && results.length > 0
+          ? JSON.parse(JSON.stringify(results))
+          : [],
     };
     const next = [...scenarios, payload];
     saveScenarios(next);
+    <button
+      type="button"
+      onClick={() => {
+        setCourses(
+          s.courses.map((c) => ({ ...c, id: Date.now() + Math.random() }))
+        );
+        if (s.results && Array.isArray(s.results)) {
+          setResults(s.results);
+        } else {
+          setResults([]);
+        }
+      }}
+      className="text-xs text-[#4c1f1f]"
+    >
+      Load
+    </button>;
   }
 
   function saveTranscriptToLocal(file) {
@@ -622,6 +642,11 @@ export default function AggiePredictor() {
                                 id: Date.now() + Math.random(),
                               }))
                             );
+                            if (s.results && Array.isArray(s.results)) {
+                              setResults(s.results);
+                            } else {
+                              setResults([]);
+                            }
                           }}
                           className="text-xs text-[#4c1f1f]"
                         >
@@ -683,7 +708,7 @@ export default function AggiePredictor() {
                     const f = fileRef.current?.files?.[0];
                     if (f) saveTranscriptToLocal(f);
                   }}
-                  className="px-4 py-2 rounded border text-sm"
+                  className="px-4 py-2 rounded border text-sm text-black"
                 >
                   Save transcript
                 </button>
@@ -694,7 +719,7 @@ export default function AggiePredictor() {
                     setResults([]);
                     setError(null);
                   }}
-                  className="px-4 py-2 rounded border text-sm"
+                  className="px-4 py-2 rounded border text-sm text-black"
                 >
                   Reset
                 </button>

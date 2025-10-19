@@ -3,5 +3,6 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  }
+  },
+  "allowedDevOrigins": ["local-origin.dev", "*.local-origin.dev"]
 }
