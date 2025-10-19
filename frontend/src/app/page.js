@@ -209,16 +209,43 @@ function isProbablyCourseNumber(value) {
 }
 
 export default function AggiePredictor() {
+  const [loading, setLoading] = useState(false);
+  const [fileName, setFileName] = useState("");
   const [dept, setDept] = useState("");
   const [courseNumber, setCourseNumber] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [classesData, setClassesData] = useState([]);
+  const [profModalOpen, setProfModalOpen] = useState(false);
   const [rawResult, setRawResult] = useState(null);
   const [resultHtml, setResultHtml] = useState(null);
   const [error, setError] = useState(null);
-  const [classesData, setClassesData] = useState([]);
-  const [profModalOpen, setProfModalOpen] = useState(false);
+
+  const [courses, setCourses] = useState([
+    { id: Date.now(), dept: "", number: "" },
+  ]);
+  const [results, setResults] = useState([]);
+  const [profModalData, setProfModalData] = useState(null);
   const fileRef = useRef(null);
+
+  function addCourse() {
+    setCourses((s) => [
+      ...s,
+      { id: Date.now() + Math.random(), dept: "", number: "" },
+    ]);
+  }
+
+  function removeCourse(id) {
+    setCourses((s) => s.filter((c) => c.id !== id));
+  }
+
+  function updateCourse(id, patch) {
+    setCourses((s) => s.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }
+
+  function openProfModal(classes, title) {
+    if (!classes || !Array.isArray(classes) || classes.length === 0) return;
+    setProfModalData({ classes, title });
+    setProfModalOpen(true);
+  }
 
   useEffect(() => {
     const el = document.getElementById("dept-input");
@@ -238,10 +265,12 @@ export default function AggiePredictor() {
 
   function validate() {
     if (!fileRef.current?.files?.[0]) return "Please upload a transcript PDF.";
-    if (!dept || dept.trim().length < 2)
-      return "Please enter a department code or name.";
-    if (!courseNumber || !isProbablyCourseNumber(courseNumber))
-      return "Please enter a valid course number (e.g. 101 or ENGL 104).";
+    const validCourses = courses.filter(
+      (c) =>
+        c.dept && c.dept.trim().length >= 2 && isProbablyCourseNumber(c.number)
+    );
+    if (validCourses.length === 0)
+      return "Please add at least one valid course (dept + number).";
     return null;
   }
 
@@ -249,6 +278,7 @@ export default function AggiePredictor() {
     e.preventDefault();
     setError(null);
     setRawResult(null);
+    setResults([]);
 
     const v = validate();
     if (v) return setError(v);
@@ -260,30 +290,53 @@ export default function AggiePredictor() {
 
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        dept: dept.trim(),
-        number: courseNumber.trim(),
+      const validCourses = courses.filter(
+        (c) =>
+          c.dept &&
+          c.dept.trim().length >= 2 &&
+          isProbablyCourseNumber(c.number)
+      );
+
+      const requests = validCourses.map(async (c) => {
+        const params = new URLSearchParams({
+          dept: c.dept.trim(),
+          number: c.number.trim(),
+        });
+        const fd = new FormData();
+        fd.append("file", file);
+        const url = `http://localhost:4000/grades?${params.toString()}`;
+        const res = await fetch(url, { method: "POST", body: fd });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || `Server returned ${res.status}`);
+        }
+        const json = await res.json().catch(() => null);
+        const analysis = json?.aiAnalysis ?? json?.analysis ?? json ?? null;
+        return {
+          id: c.id,
+          dept: c.dept,
+          number: c.number,
+          raw:
+            typeof analysis === "string"
+              ? analysis
+              : JSON.stringify(analysis, null, 2),
+          classes: json?.classes ?? [],
+        };
       });
 
-      const fd = new FormData();
-      fd.append("file", file);
-
-      const url = `http://localhost:4000/grades?${params.toString()}`;
-      const res = await fetch(url, { method: "POST", body: fd });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Server returned ${res.status}`);
-      }
-      const json = await res.json().catch(() => null);
-      // Save classes array for professor comparison UI
-      setClassesData(json?.classes ?? []);
-      const analysis = json?.aiAnalysis ?? json?.analysis ?? json ?? null;
-      if (!analysis) return setError("No analysis returned from server.");
-      setRawResult(
-        typeof analysis === "string"
-          ? analysis
-          : JSON.stringify(analysis, null, 2)
+      const all = await Promise.allSettled(requests);
+      const finished = all.map((r) =>
+        r.status === "fulfilled"
+          ? { ok: true, value: r.value }
+          : { ok: false, reason: r.reason?.message ?? String(r.reason) }
       );
+      setResults(finished);
+      // Store classesData from the first successful result (if any)
+      const firstOk = finished.find((f) => f.ok && f.value?.classes?.length);
+      if (firstOk) setClassesData(firstOk.value.classes || []);
+      // Set rawResult/html using first successful result
+      const firstAnalysis = finished.find((f) => f.ok && f.value?.raw);
+      if (firstAnalysis) setRawResult(firstAnalysis.value.raw);
     } catch (err) {
       setError(err.message || String(err));
     } finally {
@@ -432,44 +485,70 @@ export default function AggiePredictor() {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="dept-input"
-                  className="block text-sm font-medium text-gray-800"
+            <div className="space-y-4">
+              {courses.map((c, idx) => (
+                <div
+                  key={c.id}
+                  className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
                 >
-                  🏛️ Department
-                </label>
-                <select
-                  id="dept-input"
-                  value={dept}
-                  onChange={(e) => setDept(e.target.value)}
-                  className="mt-2 block w-full rounded border px-3 py-2 bg-white text-black"
-                >
-                  <option value="">Select department</option>
-                  {COMMON_DEPTS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="course-input"
-                  className="block text-sm font-medium text-gray-800"
-                >
-                  🎓 Course Number
-                </label>
-                <input
-                  id="course-input"
-                  value={courseNumber}
-                  onChange={(e) => setCourseNumber(e.target.value)}
-                  className="mt-2 block w-full rounded border px-3 py-2 text-black"
-                  placeholder="e.g., 301 or CS 101"
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-800">
+                      🏛️ Department
+                    </label>
+                    <select
+                      value={c.dept}
+                      onChange={(e) =>
+                        updateCourse(c.id, { dept: e.target.value })
+                      }
+                      className="mt-2 block w-full rounded border px-3 py-2 bg-white text-black"
+                    >
+                      <option value="">Select department</option>
+                      {COMMON_DEPTS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-800">
+                      🎓 Course Number
+                    </label>
+                    <input
+                      value={c.number}
+                      onChange={(e) =>
+                        updateCourse(c.id, { number: e.target.value })
+                      }
+                      className="mt-2 block w-full rounded border px-3 py-2 text-black"
+                      placeholder="e.g., 301 or CS 101"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => removeCourse(c.id)}
+                      disabled={courses.length === 1}
+                      aria-disabled={courses.length === 1}
+                      className={`mt-2 inline-flex items-center gap-2 px-3 py-2 border rounded text-sm ${
+                        courses.length === 1
+                          ? "opacity-50 cursor-not-allowed text-gray-500 border-gray-200"
+                          : "text-black hover:bg-gray-100"
+                      }`}
+                    >
+                      Remove
+                    </button>
+                    {idx === courses.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={addCourse}
+                        className="mt-2 inline-flex items-center gap-2 bg-[#7b2c2c] text-white px-3 py-2 rounded text-sm hover:opacity-95"
+                      >
+                        + Add
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* term removed as requested */}
@@ -482,15 +561,6 @@ export default function AggiePredictor() {
               >
                 {loading ? "Analyzing…" : "Analyze Difficulty"}
               </button>
-
-              <button
-                type="button"
-                onClick={handleOpenCompare}
-                disabled={!classesData || classesData.length === 0}
-                className="bg-[#4c1f1f] text-white px-4 py-3 rounded-md shadow-sm hover:opacity-95 disabled:opacity-50"
-              >
-                Compare Professors
-              </button>
             </div>
           </form>
 
@@ -502,25 +572,62 @@ export default function AggiePredictor() {
               </div>
             )}
 
-            {rawResult ? (
-              <article
-                className="mt-4 rounded p-4 bg-gray-50 border"
-                style={{ borderColor: AGGIE_MAROON }}
-              >
-                <h3
-                  className="text-lg font-semibold"
-                  style={{ color: AGGIE_MAROON }}
-                >
-                  Advisor analysis
-                </h3>
-                <div
-                  className="mt-2 prose max-w-none text-gray-800"
-                  dangerouslySetInnerHTML={{
-                    __html: resultHtml ?? `<pre>${rawResult}</pre>`,
-                  }}
-                />
-                {/* Compare button moved to form controls */}
-              </article>
+            {results && results.length > 0 ? (
+              <div className="space-y-4">
+                {results.map((r, idx) => (
+                  <div key={idx}>
+                    {r.ok ? (
+                      <article
+                        className="rounded p-4 bg-gray-50 border"
+                        style={{ borderColor: AGGIE_MAROON }}
+                      >
+                        <div className="flex justify-between items-start">
+                          <h3
+                            className="text-lg font-semibold"
+                            style={{ color: AGGIE_MAROON }}
+                          >
+                            {r.value.dept} {r.value.number}
+                          </h3>
+                          <div className="ml-4">
+                            <button
+                              onClick={() =>
+                                openProfModal(
+                                  r.value.classes,
+                                  `${r.value.dept} ${r.value.number}`
+                                )
+                              }
+                              className="bg-[#4c1f1f] text-white px-3 py-1 rounded-md text-sm"
+                            >
+                              Compare Professors
+                            </button>
+                          </div>
+                        </div>
+                        <div
+                          className="mt-2 prose max-w-none text-gray-800"
+                          dangerouslySetInnerHTML={{
+                            __html: (() => {
+                              try {
+                                return DOMPurify.sanitize(
+                                  marked.parse(r.value.raw || "")
+                                );
+                              } catch (e) {
+                                return `<pre>${r.value.raw}</pre>`;
+                              }
+                            })(),
+                          }}
+                        />
+                      </article>
+                    ) : (
+                      <div className="rounded p-3 bg-yellow-50 border border-yellow-100">
+                        <div className="font-medium">Request failed</div>
+                        <div className="text-sm text-gray-700">
+                          {r.reason || "Unknown error"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="mt-4 text-sm text-gray-800 text-center">
                 No results yet.
@@ -566,7 +673,8 @@ export default function AggiePredictor() {
                                 <div className="mt-2 text-xs text-black">
                                   {s.entries.map((e, idx) => (
                                     <div key={idx}>
-                                      {e.semester} {e.year} — GPA: {e.gpa}
+                                      {e.semester} {e.year} — GPA:{" "}
+                                      {Number(e.gpa).toFixed(2)}
                                     </div>
                                   ))}
                                 </div>

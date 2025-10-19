@@ -75,9 +75,19 @@ Based on the student's academic history and performance in related courses shown
 1. Likely difficulty (Easy, Moderate, Challenging, Very Challenging)
 2. Relevant prerequisites from the transcript
 3. Any gaps that may make it harder
-4. Tips for succeeding in this course
+4. Their chances of earning an (A, B, C, D, and F) AS A PERCENTAGE
 
-Keep your response concise (200-300 words).`;
+Keep your response concise (100-200 words). Keep each reply CONCISE AND BRIEF. Don't use pronouns like "you" and don't say "the student" or anything, just make the statement. 
+
+Ouput your reply like this (ADHERE TO THIS FORMAT STRICTLY DONT ADD ANYTHING EXTRA AT THE END MAKE SURE ITS ALL UNIFORM FOR EVERYSINGLE COURSE):
+**Likely Difficulty**: <difficulty here>
+
+**Relevant prerequisites**: <info here>
+
+**Gaps**: <gaps info here>
+
+**Grade Probability**: **A**: <percentage chance here> **B**: <percentage chance here> **C**: <percentage chance here> **D**: <percentage chance here> **F**: <percentage chance here>
+`;
 
     const gptResponse = await axios.post(
       "https://api.openai.com/v1/chat/completions",
