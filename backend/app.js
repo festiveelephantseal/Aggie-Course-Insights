@@ -8,7 +8,6 @@ require("dotenv").config();
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
 
-// Allow CORS from the local frontend dev origin
 app.use(
   cors({
     origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -16,12 +15,7 @@ app.use(
   })
 );
 
-// Add your OpenAI API key (use environment variable in production)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-app.get("/", (req, res) => {
-  res.send("Hello");
-});
 
 app.post("/grades", upload.single("file"), async (req, res) => {
   const { dept, number } = req.query;
@@ -30,7 +24,6 @@ app.post("/grades", upload.single("file"), async (req, res) => {
   try {
     let fileContent;
 
-    // Extract text from PDF or TXT
     if (req.file.mimetype === "application/pdf") {
       const parser = new PDFParse({ data: req.file.buffer });
       const result = await parser.getText();
@@ -46,7 +39,6 @@ app.post("/grades", upload.single("file"), async (req, res) => {
         .send("Unsupported file type. Please upload PDF or TXT");
     }
 
-    // Get grade distribution from Anex
     const response = await axios.post(
       "https://anex.us/grades/getData/",
       `dept=${dept}&number=${number}`,
@@ -62,7 +54,6 @@ app.post("/grades", upload.single("file"), async (req, res) => {
       }
     );
 
-    // Keep only the last 3 class entries to save tokens
     let classesArray = [];
     if (Array.isArray(response.data.classes)) {
       classesArray = response.data.classes.slice(-3);
@@ -70,7 +61,7 @@ app.post("/grades", upload.single("file"), async (req, res) => {
       console.warn("Unexpected classes format:", response.data);
     }
 
-    const prompt = `You are an academic advisor analyzing course difficulty for a student.
+    const prompt = `You are a Texas A&M University advisor analyzing course difficulty for a student.
 
 STUDENT'S TRANSCRIPT:
 ${fileContent}
@@ -88,7 +79,6 @@ Based on the student's academic history and performance in related courses shown
 
 Keep your response concise (200-300 words).`;
 
-    // Call OpenAI API
     const gptResponse = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -97,7 +87,7 @@ Keep your response concise (200-300 words).`;
           {
             role: "system",
             content:
-              "You are an expert academic advisor analyzing course difficulty based on transcripts and grade distributions.",
+              "You are a Texas A&M University academic advisor analyzing course difficulty based on transcripts and grade distributions.",
           },
           { role: "user", content: prompt },
         ],
@@ -112,7 +102,10 @@ Keep your response concise (200-300 words).`;
       }
     );
 
-    res.json({ aiAnalysis: gptResponse.data.choices[0].message.content });
+    res.json({
+      aiAnalysis: gptResponse.data.choices[0].message.content,
+      classes: response.data.classes,
+    });
   } catch (err) {
     console.error(err.message);
     console.error(err.response?.data);

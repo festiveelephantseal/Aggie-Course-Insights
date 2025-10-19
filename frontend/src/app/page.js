@@ -216,6 +216,8 @@ export default function AggiePredictor() {
   const [rawResult, setRawResult] = useState(null);
   const [resultHtml, setResultHtml] = useState(null);
   const [error, setError] = useState(null);
+  const [classesData, setClassesData] = useState([]);
+  const [profModalOpen, setProfModalOpen] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -273,6 +275,8 @@ export default function AggiePredictor() {
         throw new Error(text || `Server returned ${res.status}`);
       }
       const json = await res.json().catch(() => null);
+      // Save classes array for professor comparison UI
+      setClassesData(json?.classes ?? []);
       const analysis = json?.aiAnalysis ?? json?.analysis ?? json ?? null;
       if (!analysis) return setError("No analysis returned from server.");
       setRawResult(
@@ -287,6 +291,78 @@ export default function AggiePredictor() {
     }
   }
 
+  function computeRecentProfessorStats(classesArr) {
+    if (!Array.isArray(classesArr) || classesArr.length === 0) return [];
+    // Prefer the last 1-2 years relative to current year (e.g., 2024 & 2023
+    // when currentYear is 2025). If none found, fall back to the latest
+    // years present in the data.
+    const currentYear = new Date().getFullYear();
+    const allowedYears = [currentYear - 1, currentYear - 2];
+
+    let recent = classesArr.filter((c) => {
+      const y = parseInt(c.year, 10);
+      return Number.isFinite(y) && allowedYears.includes(y);
+    });
+
+    // Fallback: if no classes in the last 1-2 years, use the most recent
+    // year present in the data and the year before it (data-driven fallback).
+    if (recent.length === 0) {
+      const years = classesArr
+        .map((c) => parseInt(c.year, 10))
+        .filter((y) => Number.isFinite(y));
+      if (years.length === 0) return [];
+      const maxYear = Math.max(...years);
+      const minYear = maxYear - 1;
+      recent = classesArr.filter((c) => {
+        const y = parseInt(c.year, 10);
+        return Number.isFinite(y) && y >= minYear && y <= maxYear;
+      });
+    }
+
+    // Group by prof and compute average gpa
+    const byProf = {};
+    recent.forEach((c) => {
+      const prof = (c.prof || "Unknown").trim();
+      const gpa = parseFloat(c.gpa);
+      if (!byProf[prof]) byProf[prof] = { count: 0, sum: 0, entries: [] };
+      if (!Number.isNaN(gpa)) {
+        byProf[prof].sum += gpa;
+        byProf[prof].count += 1;
+      }
+      byProf[prof].entries.push({
+        year: c.year,
+        semester: c.semester,
+        gpa: c.gpa,
+      });
+    });
+
+    const stats = Object.keys(byProf).map((prof) => {
+      const rec = byProf[prof];
+      const avg = rec.count > 0 ? rec.sum / rec.count : null;
+      return {
+        prof,
+        avgGpa: avg === null ? null : Number(avg.toFixed(2)),
+        count: rec.count,
+        entries: rec.entries,
+      };
+    });
+
+    // Sort by avgGpa desc (nulls last) then by count desc
+    stats.sort((a, b) => {
+      if (a.avgGpa === null && b.avgGpa === null) return b.count - a.count;
+      if (a.avgGpa === null) return 1;
+      if (b.avgGpa === null) return -1;
+      return b.avgGpa - a.avgGpa || b.count - a.count;
+    });
+
+    return stats;
+  }
+
+  function handleOpenCompare() {
+    if (!classesData || classesData.length === 0) return;
+    setProfModalOpen(true);
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Top maroon header */}
@@ -297,8 +373,8 @@ export default function AggiePredictor() {
               <Image src="/tamu-logo.svg" alt="TAMU" width={28} height={28} />
             </div>
             <div>
-              <div className="font-bold">Aggie Course Difficulty Predictor</div>
-              <div className="text-xs opacity-90">Texas A&amp;M University</div>
+              <div className="font-bold">Aggie Course Insights</div>
+              {/* <div className="text-xs opacity-90">Texas A&amp;M University</div> */}
             </div>
           </div>
           {/* <div className="text-sm opacity-90">
@@ -311,12 +387,11 @@ export default function AggiePredictor() {
         {/* Hero card */}
         <div className="bg-white rounded-lg shadow-md p-8 mb-8">
           <h2 className="text-2xl font-bold text-[#500000] text-center">
-            Get Your Course Difficulty Prediction
+            Predict how difficult a course will be!
           </h2>
           <p className="mt-4 text-center text-gray-800">
             Upload your transcript and discover how challenging your next course
-            will be. Get personalized insights, study recommendations, and
-            success strategies.
+            will be
           </p>
         </div>
 
@@ -324,11 +399,14 @@ export default function AggiePredictor() {
         <div className="bg-white rounded-lg shadow p-6">
           <form onSubmit={handleSubmit}>
             {/* Dropzone */}
+            {/* Dropzone */}
             <label className="block text-sm font-medium text-black mb-2">
               📄 Upload Transcript (PDF)
             </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-md p-10 text-center mb-6 bg-gray-50">
-              <div className="mx-auto max-w-xs">
+
+            {/* Make this container relative so the absolute input is scoped to it */}
+            <div className="border-2 border-dashed border-gray-300 rounded-md p-10 text-center mb-6 bg-gray-50 relative">
+              <div className="mx-auto max-w-xs pointer-events-none">
                 <div className="text-3xl">📁</div>
                 <div className="mt-3 text-sm text-black">
                   Click to upload PDF file
@@ -336,18 +414,22 @@ export default function AggiePredictor() {
                 <div className="mt-1 text-xs text-gray-600">
                   PDF files only · Drag and drop supported
                 </div>
-                <input
-                  id="file-input"
-                  ref={fileRef}
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
-                  className="mt-4 block mx-auto"
-                />
+
                 <div className="mt-2 text-xs text-black">
                   {fileName || "No file chosen"}
                 </div>
               </div>
+
+              {/* Invisible functional file input overlay, scoped to the dropzone (relative parent) */}
+              <input
+                id="file-input"
+                ref={fileRef}
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
+                className="absolute inset-0 z-10 opacity-0 cursor-pointer"
+                // optional: allow keyboard focus
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -392,13 +474,22 @@ export default function AggiePredictor() {
 
             {/* term removed as requested */}
 
-            <div className="mt-6 flex justify-center">
+            <div className="mt-6 flex justify-center gap-4">
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-[#7b2c2c] text-white px-8 py-3 rounded-md shadow-sm hover:opacity-95"
+                className="bg-[#7b2c2c] text-white px-6 py-3 rounded-md shadow-sm hover:opacity-95"
               >
-                {loading ? "Analyzing…" : "🌶️ Analyze Difficulty"}
+                {loading ? "Analyzing…" : "Analyze Difficulty"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenCompare}
+                disabled={!classesData || classesData.length === 0}
+                className="bg-[#4c1f1f] text-white px-4 py-3 rounded-md shadow-sm hover:opacity-95 disabled:opacity-50"
+              >
+                Compare Professors
               </button>
             </div>
           </form>
@@ -428,9 +519,66 @@ export default function AggiePredictor() {
                     __html: resultHtml ?? `<pre>${rawResult}</pre>`,
                   }}
                 />
+                {/* Compare button moved to form controls */}
               </article>
             ) : (
-              <div className="mt-4 text-sm text-gray-800">No results yet.</div>
+              <div className="mt-4 text-sm text-gray-800 text-center">
+                No results yet.
+              </div>
+            )}
+            {/* Professors modal */}
+            {profModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 text-black max-h-[80vh] overflow-hidden">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-lg font-semibold">Recent Professors</h4>
+                    <button
+                      onClick={() => setProfModalOpen(false)}
+                      className="text-gray-600 hover:text-gray-800"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="mt-4 text-black">
+                    {(() => {
+                      const stats = computeRecentProfessorStats(classesData);
+                      if (!stats || stats.length === 0)
+                        return <div>No recent professor data available.</div>;
+
+                      return (
+                        <div className="space-y-3">
+                          <div className="max-h-[60vh] overflow-y-auto pr-2">
+                            {stats.slice(0, 20).map((s) => (
+                              <div
+                                key={s.prof}
+                                className="border rounded p-3 mb-3"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div className="font-medium text-black">
+                                    {s.prof}
+                                  </div>
+                                  <div className="text-sm text-black">
+                                    {s.avgGpa !== null
+                                      ? `Avg GPA: ${s.avgGpa} (${s.count} classes)`
+                                      : `No GPA data (${s.count} classes)`}
+                                  </div>
+                                </div>
+                                <div className="mt-2 text-xs text-black">
+                                  {s.entries.map((e, idx) => (
+                                    <div key={idx}>
+                                      {e.semester} {e.year} — GPA: {e.gpa}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
